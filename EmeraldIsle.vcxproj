@@ -131,13 +131,15 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="..\Dependencies\glad\src\gl.c" />
-    <ClCompile Include="Environment.cpp" />
+    <ClCompile Include="Model.cpp" />
     <ClCompile Include="Main.cpp" />
+    <ClCompile Include="City.cpp" />
     <ClCompile Include="SkyBox.cpp" />
     <ClCompile Include="Utils.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="Environment.h" />
+    <ClInclude Include="Model.h" />
+    <ClInclude Include="City.h" />
     <ClInclude Include="SkyBox.h" />
     <ClInclude Include="Utils.h" />
   </ItemGroup>

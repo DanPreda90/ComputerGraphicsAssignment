@@ -5,10 +5,11 @@
 
 #include <glad/gl.h>
 #include <GLFW/glfw3.h>
-#include "Environment.h"
+#include "Model.h"
 #include "SkyBox.h"
 #include <glm/gtc/matrix_transform.hpp>
 #include "iostream"
+#include "City.h"
 
 
 static GLFWwindow* window;
@@ -63,6 +64,11 @@ int main() {
 	sky.texture_file_path = "../assets/textures/sky.png";
 	initialize(sky);
 
+	City city;
+	city.position = glm::vec3(-30, 2, 0);
+	city.scale = glm::vec3(5, 10, 5);
+	initializeCity(city, 10);
+
     // Camera setup
    
 
@@ -70,7 +76,7 @@ int main() {
     glm::float32 FoV = 45;
     glm::float32 zNear = 100.0f;
     glm::float32 zFar = 5000.0f;
-    projectionMatrix = glm::perspective(glm::radians(FoV), 4.0f / 3.0f, zNear, zFar);
+    projectionMatrix = glm::perspective(glm::radians(FoV), 16.0f / 9.0f, zNear, zFar);
 	
     /* Loop until the user closes the window */
     while (!glfwWindowShouldClose(window))
@@ -83,6 +89,8 @@ int main() {
         /* Render here */
 		renderModel(m,vp);
 		render(sky, vp);
+		renderCity(city,vp);
+
         /* Swap front and back buffers */
         glfwSwapBuffers(window);
 
@@ -125,6 +133,7 @@ void key_callback(GLFWwindow* window, int key, int scancode, int action, int mod
 	if (key == GLFW_KEY_W) {
 		eye_center.z += 10.0f;
 		lookat.z += 10.0f;
+
 	}
 	if (key == GLFW_KEY_S) {
 		eye_center.z -= 10.0f;
@@ -163,4 +172,6 @@ void key_callback(GLFWwindow* window, int key, int scancode, int action, int mod
 
 	if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS)
 		glfwSetWindowShouldClose(window, GL_TRUE);
+
+	//std::cout << eye_center.x << ',' << eye_center.y << ',' << eye_center.z << '\n';
 }

@@ -32,22 +32,27 @@ struct Model {
 		normal = NORMAL;
 		color = COLOR_0;
 	}
-)";
+	)";
 
 	const std::string fragmentShader = R"(
 	#version 330 core
-
+    #define PI 3.1415926535897932384626433832795
 	in vec2 uv;
 	in vec3 normal;
 	in vec4 color;
 
 	out vec4 finalColor;
 	uniform sampler2D textureSampler;
+	uniform vec3 lightIntensity;
 
 	void main()
 	{
-		vec4 tex = texture(textureSampler,uv);
-		finalColor = color + tex;
+		vec3 lightDirection = vec3(0,1,0);
+		vec3 reflection = (0.78 / PI) * max(dot(normal,lightDirection),0) * lightIntensity;
+		vec4 tex = texture(textureSampler,uv) * (0.15 * 0.85);
+		vec4 rgb = vec4(reflection.xyz,0) * tex;
+		vec4 tonemapped = rgb / (1 + rgb);
+		finalColor = pow(tonemapped,vec4(1.0/2.2));
 	}
 	)";
 
@@ -59,11 +64,12 @@ struct Model {
 	GLuint textureSampler;
 	GLuint minValID;
 	GLuint maxValID;
+	GLuint lightIntensityID;
 	
 	std::vector<std::vector<PrimitiveObject>> primitiveObjects;
 
 	tinygltf::Model model;
-	glm::mat4 model_transform = glm::scale(glm::mat4(1.0f), glm::vec3(0.5, 0.5, 0.5));
+	glm::mat4 model_transform = glm::scale(glm::mat4(1.0f), glm::vec3(1.0f));
 };
 
 void initializeModel(Model & model);
