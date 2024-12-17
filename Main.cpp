@@ -10,7 +10,7 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include "iostream"
 #include "City.h"
-
+#include "Plane.h"
 
 static GLFWwindow* window;
 static void key_callback(GLFWwindow* window, int key, int scancode, int action, int mode);
@@ -60,17 +60,22 @@ int main() {
 
 	SkyBox sky;
 	sky.scale = glm::vec3(2000, 2000, 2000);
-	sky.position = eye_center;
+	sky.position = &eye_center;
 	sky.texture_file_path = "../assets/textures/sky.png";
 	initialize(sky);
 
 	City city;
 	city.position = glm::vec3(-30, 2, 0);
+	city.spacing = 5.0f;
 	city.scale = glm::vec3(5, 10, 5);
 	initializeCity(city, 10);
 
-    // Camera setup
-   
+	Plane p;
+	p.position = glm::vec3(2000, 2000, 2000);
+	p.scale = glm::vec3(0.2,0.2,0.2);
+	p.gtlf_file_path = "C:\\Users\\Dan\\Desktop\\Graphics Project\\assets\\chernovan_nemesis\\scene.gltf";
+	p.texture_file_path = "../assets/chernovan_nemesis/";
+	initalizePlane(p);
 
     glm::mat4 viewMatrix, projectionMatrix;
     glm::float32 FoV = 45;
@@ -90,7 +95,7 @@ int main() {
 		renderModel(m,vp);
 		render(sky, vp);
 		renderCity(city,vp);
-
+		renderPlane(p, vp);
         /* Swap front and back buffers */
         glfwSwapBuffers(window);
 

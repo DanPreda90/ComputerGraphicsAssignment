@@ -3,7 +3,6 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <iostream>
 
-
 void initialize(SkyBox & sky) {
 	// Define scale of the building geometry
 	// Create a vertex array object
@@ -60,8 +59,8 @@ void render(SkyBox & sky,glm::mat4 vp) {
 	// -----------------------
 	glm::mat4 modelMatrix = glm::mat4(1.0f);
 	// Scale the box along each axis to make it look like a building
+	modelMatrix = glm::translate(modelMatrix, *sky.position);
 	modelMatrix = glm::scale(modelMatrix, sky.scale);
-
 	// -----------------------
 
 	// Set model-view-projection matrix

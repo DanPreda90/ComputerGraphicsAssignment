@@ -1,16 +1,6 @@
 #pragma once
 
 #include "Utils.h"
-#include <glm/glm.hpp>
-#include <tiny_gltf.h>
-#include <glm/glm.hpp>
-#include <glm/gtc/matrix_transform.hpp>
-
-struct PrimitiveObject {
-	GLuint vao;
-	GLuint texture;
-	std::map<int, GLuint> vbos;
-};
 
 struct Model {
 	const std::string vertexShader = R"(

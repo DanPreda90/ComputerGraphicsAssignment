@@ -3,7 +3,7 @@
 #include <glad/gl.h>
 
 struct SkyBox {
-	glm::vec3 position;		// Position of the box 
+	glm::vec3 * position;	// Position of the box 
 	glm::vec3 scale;		// Size of the box in each axis
 	const char* texture_file_path;
 

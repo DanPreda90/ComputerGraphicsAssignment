@@ -2,6 +2,7 @@
 #include "City.h"
 #include "Utils.h"
 #include <iostream>
+#include <random>
 
 void bindBuilding(Building & b) {
 	// Define scale of the building geometry
@@ -32,7 +33,21 @@ void bindBuilding(Building & b) {
 	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, b.indexBufferID);
 	glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(b.index_buffer_data), b.index_buffer_data, GL_STATIC_DRAW);
 	glBindVertexArray(0);
+}
 
+std::vector<glm::vec3> generateBuildingPositions(glm::vec3 origin,float spacing,int num_positions) {
+	std::vector<glm::vec3> res;
+	std::random_device d;
+	std::mt19937 rng(d());
+	std::uniform_real_distribution<> dis(0.5, 2 * 3.14159265359);
+	glm::vec3 pos = origin;
+	for (int i = 0; i < num_positions; ++i) {
+		float f = dis(rng);
+		pos.x = pos.x + spacing * cos(f);
+		pos.z = pos.z + spacing * sin(f);
+		res.push_back(pos);
+	}
+	return res;
 }
 
 void initializeCity(City & city,int num_buildings) {
@@ -41,18 +56,17 @@ void initializeCity(City & city,int num_buildings) {
 	if (!city.programID) { return; }
 	city.mvpMatrixID = glGetUniformLocation(city.programID, "MVP");
 	glm::vec3 position = glm::vec3(city.position);
+	std::vector<glm::vec3> positions = generateBuildingPositions(city.position, city.spacing, num_buildings);
 	for (int i = 0; i < num_buildings; ++i) {
 		Building b;
-		b.position = position;
+		b.position = positions[i];
 		b.scale = city.scale;
-		position.x += 5;
 		bindBuilding(b);
 		// Get a handle for our "MVP" uniform
 		
 		//GLenum params[] = { GL_LINEAR,GL_LINEAR_MIPMAP_LINEAR,GL_REPEAT,GL_REPEAT };
 		//city.textureID = loadTexture(params, city.texture_file_path);
 		city.buildings.push_back(b);
-		
 	}
 }
 
