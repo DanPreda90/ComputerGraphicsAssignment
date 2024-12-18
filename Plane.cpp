@@ -46,50 +46,15 @@ void computeGlobalNodeTransform(const tinygltf::Model& model,
 	std::vector<glm::mat4>& globalTransforms)
 {
 	glm::mat4 globalTransform = parentTransform * localTransforms[nodeIndex];
-	globalTransforms[nodeIndex] = globalTransform;
-	for (int child : model.nodes[nodeIndex].children) {
-		computeGlobalNodeTransform(model, localTransforms, child, globalTransform, globalTransforms);
-	}
-}
-
-std::vector<SkinObject> prepareSkinning(const tinygltf::Model& model) {
-	std::vector<SkinObject> skinObjects;
-
-	// In our Blender exporter, the default number of joints that may influence a vertex is set to 4, just for convenient implementation in shaders.
-
-	for (size_t i = 0; i < model.skins.size(); i++) {
-		SkinObject skinObject;
-
-		const tinygltf::Skin& skin = model.skins[i];
-
-		// Read inverseBindMatrices
-		const tinygltf::Accessor& accessor = model.accessors[skin.inverseBindMatrices];
-		assert(accessor.type == TINYGLTF_TYPE_MAT4);
-		const tinygltf::BufferView& bufferView = model.bufferViews[accessor.bufferView];
-		const tinygltf::Buffer& buffer = model.buffers[bufferView.buffer];
-		const float* ptr = reinterpret_cast<const float*>(
-			buffer.data.data() + accessor.byteOffset + bufferView.byteOffset);
-
-		skinObject.inverseBindMatrices.resize(accessor.count);
-		for (size_t j = 0; j < accessor.count; j++) {
-			float m[16];
-			memcpy(m, ptr + j * 16, 16 * sizeof(float));
-			skinObject.inverseBindMatrices[j] = glm::make_mat4(m);
+	std::vector<int> children = model.nodes[nodeIndex].children;
+	if (children.size() != 0) {
+		for (int child : children) {
+			computeGlobalNodeTransform(model, localTransforms, child, globalTransform, globalTransforms);
 		}
-
-		assert(skin.joints.size() == accessor.count);
-
-		skinObject.globalJointTransforms.resize(skin.joints.size());
-		skinObject.jointMatrices.resize(skin.joints.size());
-		std::vector<glm::mat4> localJointTransforms(skin.joints.size());
-		computeLocalNodeTransform(model, skin.joints[0], localJointTransforms);
-		computeGlobalNodeTransform(model, localJointTransforms, skin.joints[0], glm::mat4(1.0f), skinObject.globalJointTransforms);
-		for (int j = 0; j < skin.joints.size(); ++j) {
-			skinObject.jointMatrices[j] = skinObject.globalJointTransforms[skin.joints[j]] * skinObject.inverseBindMatrices[j];
-		}
-		skinObjects.push_back(skinObject);
 	}
-	return skinObjects;
+	else {
+		globalTransforms[model.nodes[nodeIndex].mesh] = globalTransform;
+	}
 }
 
 int findKeyframeIndex(const std::vector<float>& times, float animationTime)
@@ -115,18 +80,18 @@ int findKeyframeIndex(const std::vector<float>& times, float animationTime)
 	return times.size() - 2;
 }
 
-std::vector<AnimationObject> prepareAnimation(const tinygltf::Model& model)
+std::vector<AnimationObject> prepareAnimation(Plane & plane)
 {
 	std::vector<AnimationObject> animationObjects;
-	for (const auto& anim : model.animations) {
+	for (const auto& anim : plane.model.animations) {
 		AnimationObject animationObject;
 
 		for (const auto& sampler : anim.samplers) {
 			SamplerObject samplerObject;
 
-			const tinygltf::Accessor& inputAccessor = model.accessors[sampler.input];
-			const tinygltf::BufferView& inputBufferView = model.bufferViews[inputAccessor.bufferView];
-			const tinygltf::Buffer& inputBuffer = model.buffers[inputBufferView.buffer];
+			const tinygltf::Accessor& inputAccessor = plane.model.accessors[sampler.input];
+			const tinygltf::BufferView& inputBufferView = plane.model.bufferViews[inputAccessor.bufferView];
+			const tinygltf::Buffer& inputBuffer = plane.model.buffers[inputBufferView.buffer];
 
 			assert(inputAccessor.componentType == TINYGLTF_COMPONENT_TYPE_FLOAT);
 			assert(inputAccessor.type == TINYGLTF_TYPE_SCALAR);
@@ -143,9 +108,9 @@ std::vector<AnimationObject> prepareAnimation(const tinygltf::Model& model)
 				samplerObject.input[i] = *reinterpret_cast<const float*>(inputPtr + i * stride);
 			}
 
-			const tinygltf::Accessor& outputAccessor = model.accessors[sampler.output];
-			const tinygltf::BufferView& outputBufferView = model.bufferViews[outputAccessor.bufferView];
-			const tinygltf::Buffer& outputBuffer = model.buffers[outputBufferView.buffer];
+			const tinygltf::Accessor& outputAccessor = plane.model.accessors[sampler.output];
+			const tinygltf::BufferView& outputBufferView = plane.model.bufferViews[outputAccessor.bufferView];
+			const tinygltf::Buffer& outputBuffer = plane.model.buffers[outputBufferView.buffer];
 
 			assert(outputAccessor.componentType == TINYGLTF_COMPONENT_TYPE_FLOAT);
 
@@ -177,6 +142,19 @@ std::vector<AnimationObject> prepareAnimation(const tinygltf::Model& model)
 		animationObjects.push_back(animationObject);
 	}
 	return animationObjects;
+}
+
+std::vector<int> getMeshIndices(const tinygltf::Model& model, int target) {
+	tinygltf::Node node = model.nodes[target];
+	std::vector<int> res;
+
+	for (int child : node.children) {
+		tinygltf::Node ch = model.nodes[child];
+		if (ch.mesh != -1) {
+			res.push_back(ch.mesh);
+		}
+	}
+	return res;
 }
 
 void updateAnimation(
@@ -212,6 +190,7 @@ void updateAnimation(
 		// -----------------------------------------------------------
 		// TODO: Add interpolation for smooth animation
 		// -----------------------------------------------------------
+		glm::mat4 t(1.0f);
 		if (channel.target_path == "translation") {
 			glm::vec3 translation0, translation1;
 			glm::vec3 translation;
@@ -225,7 +204,7 @@ void updateAnimation(
 				translation = translation0;
 			}
 
-			nodeTransforms[targetNodeIndex] = glm::translate(nodeTransforms[targetNodeIndex], translation);
+			t = glm::translate(t, translation);
 		}
 		else if (channel.target_path == "rotation") {
 			glm::quat rotation0, rotation1;
@@ -239,7 +218,7 @@ void updateAnimation(
 			else {
 				rotation = rotation0;
 			}
-			nodeTransforms[targetNodeIndex] *= glm::mat4_cast(rotation);
+			t *= glm::mat4_cast(rotation);
 		}
 		else if (channel.target_path == "scale") {
 			glm::vec3 scale0, scale1;
@@ -253,30 +232,27 @@ void updateAnimation(
 			else {
 				scale = scale0;
 			}
-			nodeTransforms[targetNodeIndex] = glm::scale(nodeTransforms[targetNodeIndex], scale);
+			t = glm::scale(t, scale);
 		}
+		nodeTransforms[channel.target_node] = t;
 	}
 }
 
-void update(Plane& plane,float time)
+void update(Plane & p,float time)
 {
-	return;
-	for (int i = 0; i < plane.skinObjects.size(); ++i) {
-		if (plane.model.animations.size() > 0) {
-			const tinygltf::Animation& animation = plane.model.animations[i];
-			const AnimationObject& animationObject = plane.animationObjects[i];
-			SkinObject& skinObj = plane.skinObjects[i];
-			std::vector<glm::mat4> nodeTransforms(skinObj.globalJointTransforms.size());
-			for (size_t i = 0; i < nodeTransforms.size(); ++i) {
-				nodeTransforms[i] = glm::mat4(1.0);
-			}
-			updateAnimation(plane.model, animation, animationObject, time, nodeTransforms);
-			computeGlobalNodeTransform(plane.model, nodeTransforms, plane.model.skins[i].joints[0], glm::mat4(1.0f), skinObj.globalJointTransforms);
-			for (int j = 0; j < nodeTransforms.size(); ++j) {
-				skinObj.jointMatrices[j] = skinObj.globalJointTransforms[plane.model.skins[0].joints[j]] * skinObj.inverseBindMatrices[j];
-			}
+	//return;
+	
+	if (p.model.animations.size() > 0) {
+		const tinygltf::Animation& animation = p.model.animations[0];
+		const AnimationObject& animationObject = p.animationObjects[0];
+		
+		std::vector<glm::mat4> nodeTransforms(p.model.nodes.size());
+		updateAnimation(p.model, animation, animationObject, time, nodeTransforms);
+		for (const tinygltf::AnimationChannel& channel : animation.channels) {
+			computeGlobalNodeTransform(p.model, nodeTransforms, channel.target_node, glm::mat4(1.0f), p.meshMatrices);
 		}
 	}
+	
 }
 
 void bindPlaneMesh(std::vector<PrimitiveObject>& primitiveObjects,
@@ -396,41 +372,77 @@ void initalizePlane(Plane& plane) {
 		std::cerr << "Failed to load model." << std::endl;
 	}
 	tinygltf::Scene scene = plane.model.scenes[0];
-	//getSceneTransform(plane.model, plane.model_transform, plane.model.nodes[scene.nodes[0]]);
+	getSceneTransform(plane.model, plane.model_transform, plane.model.nodes[scene.nodes[0]]);
 	bindModel(plane);
+	plane.animationObjects = prepareAnimation(plane);
+	for (int i = 0; i < plane.model.meshes.size(); ++i) {
+		plane.meshMatrices.push_back(glm::mat4(1.0f));
+	}
 	plane.lightIntensityID = glGetUniformLocation(plane.shader, "lightIntensity");
 	plane.mvpMatrixID = glGetUniformLocation(plane.shader, "MVP");
 	plane.textureSampler = glGetUniformLocation(plane.shader, "textureSampler");
 }
 
-void drawModelNodes(Plane& m, tinygltf::Node& node) {
+void drawPlaneMesh(const std::vector<PrimitiveObject>& primitiveObjects,
+	tinygltf::Model& model, GLuint textureSampler, tinygltf::Mesh& mesh,Plane & plane,glm::mat4 & vp) {
+	for (size_t i = 0; i < mesh.primitives.size(); ++i)
+	{
+		GLuint vao = primitiveObjects[i].vao;
+		std::map<int, GLuint> vbos = primitiveObjects[i].vbos;
+		GLuint texture = primitiveObjects[i].texture;
+		glBindVertexArray(vao);
+		if (texture != 0) {
+			glActiveTexture(GL_TEXTURE0);
+			glUniform1f(textureSampler, 0);
+			glBindTexture(GL_TEXTURE_2D, texture);
+		}
+		int mesh_index = -1;
+		for (int j = 0; j < model.meshes.size();++j) {
+			if (model.meshes[j] == mesh) {
+				mesh_index = j;
+				break;
+			}
+		}
+		assert(mesh_index != -1);
+		glm::mat4 mvp = vp * plane.meshMatrices[mesh_index] * plane.model_transform;
+		glUniformMatrix4fv(plane.mvpMatrixID, 1, GL_FALSE, &mvp[0][0]);
+		tinygltf::Primitive primitive = mesh.primitives[i];
+		tinygltf::Accessor indexAccessor = model.accessors[primitive.indices];
+		tinygltf::BufferView bv = model.bufferViews[indexAccessor.bufferView];
+		glBindBuffer(bv.target, vbos[indexAccessor.bufferView]);
+		glDrawElements(primitive.mode, indexAccessor.count,
+			indexAccessor.componentType,
+			BUFFER_OFFSET(indexAccessor.byteOffset));
+		glBindVertexArray(0);
+	}
+}
+
+void drawModelNodes(Plane& m, tinygltf::Node& node,glm::mat4 & vp) {
 	// Draw the mesh at the node, and recursively do so for children nodes
 	if ((node.mesh >= 0) && (node.mesh < m.model.meshes.size())) {
-		drawMesh(m.primitiveObjects[node.mesh], m.model, m.textureSampler, m.model.meshes[node.mesh]);
+		drawPlaneMesh(m.primitiveObjects[node.mesh], m.model, m.textureSampler, m.model.meshes[node.mesh],m,vp);
 		return;
 	}
 	for (size_t i = 0; i < node.children.size(); i++) {
-		drawModelNodes(m, m.model.nodes[node.children[i]]);
+		drawModelNodes(m, m.model.nodes[node.children[i]],vp);
 	}
 }
-void drawModel(Plane& m) {
+void drawModel(Plane& m,glm::mat4 & vp) {
 	// Draw all nodes
 	const tinygltf::Scene& scene = m.model.scenes[m.model.defaultScene];
 	for (size_t i = 0; i < scene.nodes.size(); ++i) {
-		drawModelNodes(m, m.model.nodes[scene.nodes[i]]);
+		drawModelNodes(m, m.model.nodes[scene.nodes[i]],vp);
 	}
 }
 
 void renderPlane(Plane& plane, glm::mat4 vp) {
 	glUseProgram(plane.shader);
-	glm::mat4 modelMatrix = glm::mat4(1.0f);
+	glm::mat4 modelMatrix = plane.model_transform;
 	modelMatrix = glm::scale(modelMatrix, plane.scale);
 	modelMatrix = glm::translate(modelMatrix, plane.position);
 
 	// Scale the box along each axis to make it look like a building
 
-	glm::mat4 mvp = vp * modelMatrix;
 	//glUniform3fv(plane.lightIntensityID, 1, &lightIntensity[0]);
-	glUniformMatrix4fv(plane.mvpMatrixID, 1, GL_FALSE, &mvp[0][0]);
-	drawModel(plane);
+	drawModel(plane,vp);
 }

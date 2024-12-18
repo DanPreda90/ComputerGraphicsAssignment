@@ -307,21 +307,6 @@ void getSceneTransform(tinygltf::Model& model, glm::mat4& transform, tinygltf::N
 		glm::mat4 t = glm::make_mat4(node.matrix.data());
 		transform = transform * t;
 	}
-	else {
-		if (node.translation.size() != 0) {
-			glm::vec3 trans = glm::make_vec3(node.translation.data());
-			t = glm::translate(t, trans);
-		}
-		if (node.rotation.size() != 0) {
-			glm::quat rot = glm::make_quat(node.rotation.data());
-			t *= glm::mat4_cast(rot);
-		}
-		if (node.scale.size() != 0) {
-			glm::vec3 scale = glm::make_vec3(node.scale.data());
-			t = glm::scale(t, scale);
-		}
-		transform *= t;
-	}
 	for (int child : node.children) {
 		getSceneTransform(model, transform, model.nodes[child]);
 	}
@@ -362,7 +347,6 @@ void drawMesh(const std::vector<PrimitiveObject>& primitiveObjects,
 			glUniform1f(textureSampler, 0);
 			glBindTexture(GL_TEXTURE_2D, texture);
 		}
-
 		tinygltf::Primitive primitive = mesh.primitives[i];
 		tinygltf::Accessor indexAccessor = model.accessors[primitive.indices];
 		tinygltf::BufferView bv = model.bufferViews[indexAccessor.bufferView];

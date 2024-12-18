@@ -71,8 +71,8 @@ int main() {
 	initializeCity(city, 10);
 
 	Plane p;
-	p.position = glm::vec3(2000, 2000, 2000);
-	p.scale = glm::vec3(0.2,0.2,0.2);
+	p.position = glm::vec3(0, 0, 0);
+	p.scale = glm::vec3(1,1,1);
 	p.gtlf_file_path = "C:\\Users\\Dan\\Desktop\\Graphics Project\\assets\\chernovan_nemesis\\scene.gltf";
 	p.texture_file_path = "../assets/chernovan_nemesis/";
 	initalizePlane(p);
@@ -82,14 +82,29 @@ int main() {
     glm::float32 zNear = 100.0f;
     glm::float32 zFar = 5000.0f;
     projectionMatrix = glm::perspective(glm::radians(FoV), 16.0f / 9.0f, zNear, zFar);
-	
+	static double lastTime = glfwGetTime();
+	float time = 0.0f;			// Animation time 
+	float fTime = 0.0f;			// Time for measuring fps
     /* Loop until the user closes the window */
+	static float playbackSpeed = 2.0f;
     while (!glfwWindowShouldClose(window))
     {
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
+		double currentTime = glfwGetTime();
+		float deltaTime = float(currentTime - lastTime);
+		lastTime = currentTime;
+
+		if (true) {
+			time += deltaTime * playbackSpeed;
+			update(p,time);
+		}
+
 		viewMatrix = glm::lookAt(eye_center, lookat, up);
 		glm::mat4 vp = projectionMatrix * viewMatrix;
+
+		
+		
 
         /* Render here */
 		renderModel(m,vp);

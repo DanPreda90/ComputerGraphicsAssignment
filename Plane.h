@@ -83,11 +83,12 @@ struct Plane {
 	std::vector<std::vector<PrimitiveObject>> primitiveObjects;
 	std::vector<AnimationObject> animationObjects;
 	std::vector<SkinObject> skinObjects;
+	std::vector<glm::mat4> meshMatrices;
 
 	tinygltf::Model model;
 	glm::mat4 model_transform = glm::mat4(1.0f);
 };
 
 void initalizePlane(Plane& plane);
-void updatePlane(Plane& plane, float time);
+void update(Plane& plane, float time);
 void renderPlane(Plane& plane, glm::mat4 vp);
