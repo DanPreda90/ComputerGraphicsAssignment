@@ -3,7 +3,7 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <glad/gl.h>
 #include <vector>
-
+#include "Utils.h"
 
 struct Building{
 	glm::vec3 position;
@@ -13,7 +13,7 @@ struct Building{
 	GLuint colorBufferID;
 	GLuint VAO;
 	GLuint uvBufferID;
-	GLuint textureID;
+	GLuint normalBufferID;
 	GLuint indexBufferID;
 
 	GLfloat vertex_buffer_data[72] = {	// Vertex definition for a canonical box
@@ -53,6 +53,8 @@ struct Building{
 		1.0f, -1.0f, 1.0f,
 		-1.0f, -1.0f, 1.0f
 	};
+
+	GLfloat normal_buffer_data[72] = { 0 };
 	GLfloat color_buffer_data[72] =
 	{
 		// Front, red
@@ -110,34 +112,80 @@ struct Building{
 		20, 21, 22,
 		20, 22, 23
 	};
-	std::vector<GLfloat> uv_buffer_data;
+	GLfloat uv_buffer_data [48] = 
+	{
+		// Front
+		0.0f, 1.0f,
+		1.0f, 1.0f,
+		1.0f, 0.0f,
+		0.0f, 0.0f,
+		// Back
+		0.0f, 1.0f,
+		1.0f, 1.0f,
+		1.0f, 0.0f,
+		0.0f, 0.0f,
+		// Left
+		0.0f, 1.0f,
+		1.0f, 1.0f,
+		1.0f, 0.0f,
+		0.0f, 0.0f,
+		// Right
+		0.0f, 1.0f,
+		1.0f, 1.0f,
+		1.0f, 0.0f,
+		0.0f, 0.0f,
+		// Top - we do not want texture the top
+		0.0f, 0.0f,
+		0.0f, 0.0f,
+		0.0f, 0.0f,
+		0.0f, 0.0f,
+		// Bottom - we do not want texture the bottom
+		0.0f, 0.0f,
+		0.0f, 0.0f,
+		0.0f, 0.0f,
+		0.0f, 0.0f,
+	
+	};
 
-	const char* texture_file_path;
+	
 };
 
 struct City {
 	glm::vec3 scale;
 	glm::vec3 position;
+	glm::vec3 lightPosition;
 	float spacing;
 	std::vector<Building> buildings;
 	GLuint programID;
 	GLuint mvpMatrixID;
+	GLuint lightIntensityID;
+	GLuint textureID;
+	GLuint shadowMapSamplerID;
 	GLuint textureSamplerID;
+	GLuint lightPositionID;
+	GLuint shadowMVPID;
+	int num_indices;
+	const char* texture_file_path;
 
 	const char* vertex_shader = R"(
 		#version 330 core
-
+		
 		// Input
 		layout(location = 0) in vec3 vertexPosition;
 		layout(location = 1) in vec3 vertexColor;
-		//layout(location = 2) in vec2 vertexUV;
+		layout(location = 2) in vec2 vertexUV;
+		layout(location = 3) in vec3 vertexNormal;
 
 		// Output data, to be interpolated for each fragment
 		out vec3 color;
-		//out vec2 uv;
+		out vec2 uv;
+		out vec3 normal;
+		out vec4 shadowPos;
+		out vec3 worldPosition;
 
 		// Matrix for vertex transformation
 		uniform mat4 MVP;
+		uniform mat4 depthMVP;
 
 		void main() {
 			// Transform vertex
@@ -145,26 +193,49 @@ struct City {
     
 			// Pass vertex color to the fragment shader
 			color = vertexColor;
-			//uv = vertexUV;
+			uv = vertexUV;
+			normal = vertexNormal;
+			worldPosition = vertexPosition;
+			shadowPos = depthMVP * vec4(vertexPosition,1.0f);
 		}
 	)";
 
 	const char* fragment_shader = R"(
-		#version 330 core
+	#version 330 core
+    #define PI 3.1415926535897932384626433832795
+	in vec2 uv;
+	in vec3 normal;
+	in vec4 color;
 
-		in vec3 color;
-		//in vec2 uv;
+	out vec4 finalColor;
+	uniform sampler2D textureSampler;
+	uniform sampler2D depthSampler;
+	uniform vec3 lightIntensity;
 
-		//uniform sampler2D skyboxSampler;
+	float shadowCalculation(vec4 shadowPos)
+	{
+			vec3 projection = shadowPos.xyz / shadowPos.w;
+			projection = projection * 0.5 + 0.5;
+			float lightDepth = texture(depthSampler,projection.xy).r;
+			float cameraDepth = shadowPos.z;
 
-		out vec3 finalColor;
+			return (cameraDepth >= lightDepth + 1e-4) ? 0.8 : 1.0;
+	}
 
-		void main()
-		{
-			finalColor = color;
-		}
+	void main()
+	{
+		vec3 lightDirection = normalize(vec3(0,1,0));
+		vec3 reflection = (0.78 / PI) * max(dot(normal,lightDirection),0) * lightIntensity;
+		vec4 tex = texture(textureSampler,uv) * (0.15 * 0.85);
+		vec4 rgb = vec4(reflection.xyz,0) * tex;
+		vec4 tonemapped = rgb / (1 + rgb);
+		vec3 ambient = 0.15 * lightIntensity;
+		finalColor = pow(tonemapped,vec4(1.0/2.2));
+	}
 	)";
+
 };
 
 void initializeCity(City& city,int num_buildings);
-void renderCity(City& city, glm::mat4 vp);
+void renderCity(City& city, glm::mat4 vp,glm::mat4 shadowMVP,Light& light);
+void renderCityToShadow(City& city, Light & light);

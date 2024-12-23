@@ -1,10 +1,36 @@
 #include "Utils.h"
 #include <string> 
 #include <stb_image.h>
+#include <stb_image_write.h>
 #include <iostream> 
 #include <fstream>
 #include <sstream> 
 #include <vector>
+
+
+;
+
+void initializeFrameBuffer(Light & l) {
+	l.programID = LoadShadersFromString(l.depth_vertex_shader, l.depth_fragment_shader);
+	glGenFramebuffers(1, &l.frameBufferID);
+	glGenTextures(1, &l.shadowMapID);
+	glBindTexture(GL_TEXTURE_2D, l.shadowMapID);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT,
+		1920, 1080, 0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+	glBindFramebuffer(GL_FRAMEBUFFER, l.frameBufferID);
+	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, l.shadowMapID, 0);
+	glDrawBuffer(GL_NONE);
+	glReadBuffer(GL_NONE);
+	if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+		std::cerr << "Frame buffer object not complete";
+	}
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+	l.depthMatrixID = glGetUniformLocation(l.programID, "depthMVP");
+}
 
 GLuint loadTexture(GLenum* params, const char* img_path) {
 	int w, h, channels;
@@ -22,6 +48,30 @@ GLuint loadTexture(GLenum* params, const char* img_path) {
 
 	free(img);
 	return texture;
+}
+
+void CalculateSurfaceNormals(GLfloat* out, size_t length,GLfloat* vertices) {
+	for (int i = 0; i < length; i += 12) {
+		glm::vec3 side1(vertices[i] - vertices[i + 3], vertices[i + 1] - vertices[i + 4], vertices[i + 2] - vertices[i + 5]);
+		glm::vec3 side2(vertices[i] - vertices[i + 6], vertices[i + 1] - vertices[i + 7], vertices[i + 2] - vertices[i + 8]);
+
+		glm::vec3 normalized = glm::normalize(glm::cross(side1, side2));
+		out[i] = normalized[0];
+		out[i + 1] = normalized[1];
+		out[i + 2] = normalized[2];
+
+		out[i + 3] = normalized[0];
+		out[i + 4] = normalized[1];
+		out[i + 5] = normalized[2];
+
+		out[i + 6] = normalized[0];
+		out[i + 7] = normalized[1];
+		out[i + 8] = normalized[2];
+
+		out[i + 9] = normalized[0];
+		out[i + 10] = normalized[1];
+		out[i + 11] = normalized[2];
+	}
 }
 
 GLuint LoadShadersFromFile(const char* vertex_file_path, const char* fragment_file_path)
@@ -243,20 +293,24 @@ void bindMesh(std::vector<PrimitiveObject>& primitiveObjects,
 	for (size_t i = 0; i < mesh.primitives.size(); ++i) {
 
 		tinygltf::Primitive primitive = mesh.primitives[i];
-		tinygltf::Accessor indexAccessor = model.accessors[primitive.indices];
+		
 		tinygltf::Material material = model.materials[primitive.material];
 		GLuint texture = 0;
 		int textureIndex = material.pbrMetallicRoughness.baseColorTexture.index;
 		if (textureIndex != -1) {
-			tinygltf::Sampler sampler = model.samplers[model.textures[textureIndex].sampler];
+
+			tinygltf::Texture tex = model.textures[textureIndex];
+			tinygltf::Sampler sampler = model.samplers[tex.sampler];
+			std::string img_uri = model.images[tex.source].uri;
+			std::string path = std::string(texture_file_path) + img_uri;
 			GLenum params[4] = { sampler.magFilter,sampler.minFilter,sampler.wrapS,sampler.wrapT };
-			texture = loadTexture(params, texture_file_path);
+			texture = loadTexture(params, path.c_str());
 		}
 
 		GLuint vao;
 		glGenVertexArrays(1, &vao);
 		glBindVertexArray(vao);
-		//glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, vbos[0]);
+		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, vbos[0]);
 
 		for (auto& attrib : primitive.attributes) {
 			tinygltf::Accessor accessor = model.accessors[attrib.second];
@@ -288,12 +342,13 @@ void bindMesh(std::vector<PrimitiveObject>& primitiveObjects,
 				std::cout << "vaa missing: " << attrib.first << std::endl;
 			}
 		}
-
+		tinygltf::Accessor indexAccessor = model.accessors[mesh.primitives[0].indices];
 		// Record VAO for later use
 		PrimitiveObject primitiveObject;
 		primitiveObject.vao = vao;
 		primitiveObject.texture = texture;
 		primitiveObject.vbos = vbos;
+		primitiveObject.num_indices = indexAccessor.count;
 		primitiveObjects.push_back(primitiveObject);
 
 		glBindVertexArray(0);
@@ -350,10 +405,26 @@ void drawMesh(const std::vector<PrimitiveObject>& primitiveObjects,
 		tinygltf::Primitive primitive = mesh.primitives[i];
 		tinygltf::Accessor indexAccessor = model.accessors[primitive.indices];
 		tinygltf::BufferView bv = model.bufferViews[indexAccessor.bufferView];
-		glBindBuffer(bv.target, vbos[indexAccessor.bufferView]);
 		glDrawElements(primitive.mode, indexAccessor.count,
 			indexAccessor.componentType,
 			BUFFER_OFFSET(indexAccessor.byteOffset));
 		glBindVertexArray(0);
 	}
+}
+
+void saveDepthTexture(GLuint fbo, std::string filename) {
+	int width = 1920;
+	int height = 1080;
+	int channels = 3;
+
+	std::vector<float> depth(width * height);
+	glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+	glReadBuffer(GL_DEPTH_COMPONENT);
+	glReadPixels(0, 0, width, height, GL_DEPTH_COMPONENT, GL_FLOAT, depth.data());
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+	std::vector<unsigned char> img(width * height * 3);
+	for (int i = 0; i < width * height; ++i) img[3 * i] = img[3 * i + 1] = img[3 * i + 2] = depth[i] * 255;
+
+	stbi_write_png(filename.c_str(), width, height, channels, img.data(), width * channels);
 }

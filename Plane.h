@@ -1,17 +1,6 @@
 #pragma once
 #include "Utils.h"
 
-// Skinning 
-struct SkinObject {
-	// Transforms the geometry into the space of the respective joint
-	std::vector<glm::mat4> inverseBindMatrices;
-
-	// Transforms the geometry following the movement of the joints
-	std::vector<glm::mat4> globalJointTransforms;
-
-	// Combined transforms
-	std::vector<glm::mat4> jointMatrices;
-};
 
 // Animation 
 struct SamplerObject {
@@ -32,6 +21,8 @@ struct AnimationObject {
 struct Plane {
 	glm::vec3 position;
 	glm::vec3 scale;
+	float rotation;
+
 	const std::string vertexShader = R"(
 	#version 330 core
 
@@ -58,15 +49,32 @@ struct Plane {
     #define PI 3.1415926535897932384626433832795
 	in vec2 uv;
 	in vec3 normal;
-	//in vec3 tangent;
+	in vec4 color;
 
 	out vec4 finalColor;
 	uniform sampler2D textureSampler;
+	uniform sampler2D depthSampler;
 	uniform vec3 lightIntensity;
+
+	float shadowCalculation(vec4 shadowPos)
+	{
+			vec3 projection = shadowPos.xyz / shadowPos.w;
+			projection = projection * 0.5 + 0.5;
+			float lightDepth = texture(depthSampler,projection.xy).r;
+			float cameraDepth = shadowPos.z;
+
+			return (cameraDepth >= lightDepth + 1e-4) ? 0.8 : 1.0;
+	}
 
 	void main()
 	{
-		finalColor = texture(textureSampler,uv);
+		vec3 lightDirection = normalize(vec3(0,1,0));
+		vec3 reflection = (0.78 / PI) * max(dot(normal,lightDirection),0) * lightIntensity;
+		vec4 tex = texture(textureSampler,uv) * (0.15 * 0.85);
+		vec4 rgb = vec4(reflection.xyz,0) * tex;
+		vec4 tonemapped = rgb / (1 + rgb);
+		vec3 ambient = 0.15 * lightIntensity;
+		finalColor = pow(tonemapped,vec4(1.0/2.2));
 	}
 	)";
 
@@ -82,13 +90,14 @@ struct Plane {
 
 	std::vector<std::vector<PrimitiveObject>> primitiveObjects;
 	std::vector<AnimationObject> animationObjects;
-	std::vector<SkinObject> skinObjects;
+	std::vector<glm::mat4> localNodeTransforms;
 	std::vector<glm::mat4> meshMatrices;
 
-	tinygltf::Model model;
+	tinygltf::Model * model;
 	glm::mat4 model_transform = glm::mat4(1.0f);
 };
 
-void initalizePlane(Plane& plane);
+void initalizePlane(Plane& plane,tinygltf::Model * model);
 void update(Plane& plane, float time);
 void renderPlane(Plane& plane, glm::mat4 vp);
+void renderPlaneShadow(Plane& plane, Light& light);

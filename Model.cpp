@@ -1,5 +1,6 @@
 #pragma once
 #include "Model.h"
+#include "Utils.h"
 #include <glad/gl.h>
 #include <string>
 #include <iostream>
@@ -26,7 +27,6 @@ void bindModelNodes(Model& m,
 }
 
 void bindModel(Model& m) {
-
 	tinygltf::Scene& scene = m.model.scenes[m.model.defaultScene];
 	for (int i = 0; i < scene.nodes.size(); ++i) {
 		bindModelNodes(m, m.model.nodes[scene.nodes[i]]);
@@ -46,11 +46,13 @@ void initializeModel(Model& model) {
 	model.lightIntensityID = glGetUniformLocation(model.shader, "lightIntensity");
 	model.mvpMatrixID = glGetUniformLocation(model.shader, "MVP");
 	model.textureSampler = glGetUniformLocation(model.shader, "textureSampler");
+	model.depthMapSamplerID = glGetUniformLocation(model.shader, "depthSampler");
+	model.lightMVPID = glGetUniformLocation(model.shader, "lightMVP");
 }
 
 void drawModelNodes(Model& m,tinygltf::Node& node) {
 	// Draw the mesh at the node, and recursively do so for children nodes
-	if ((node.mesh >= 0) && (node.mesh < m.model.meshes.size())) {
+	if ((node.mesh == 0) && (node.mesh < m.model.meshes.size())) {
 		drawMesh(m.primitiveObjects[node.mesh], m.model, m.textureSampler,m.model.meshes[node.mesh]);
 		return;
 	}
@@ -66,10 +68,19 @@ void drawModel(Model & m) {
 	}
 }
 
-void renderModel(Model & model,glm::mat4 vp) {
+void renderModel(Model & model,glm::mat4 vp,Light & light) {
 	glUseProgram(model.shader);
-	glm::mat4 mvp = model.model_transform * vp;
+	glm::mat4 m = glm::scale(glm::mat4(1.0f), glm::vec3(0.5, 0.5, 0.5));
+	glm::mat4 mvp = vp * m;
+	glm::mat4 lightPerspective = glm::perspective(glm::radians(45.0f), (float)16 / 9, 100.0f, 5000.0f);
+	glm::mat4 lightCamera = glm::lookAt(light.position, light.position + light.front, glm::vec3(0, 1, 0));
+	glm::mat4 lightMVP = lightPerspective * lightCamera * m;
+	glActiveTexture(GL_TEXTURE1);
+	glBindTexture(GL_TEXTURE_2D, light.depthTextureID);
+	glUniform1f(model.depthMapSamplerID, 0);
 	glUniform3fv(model.lightIntensityID,1,&lightIntensity[0]);
+	glUniformMatrix4fv(model.lightMVPID, 1, GL_FALSE,&lightMVP[0][0]);
 	glUniformMatrix4fv(model.mvpMatrixID, 1, GL_FALSE, &mvp[0][0]);
 	drawModel(model);
 }
+

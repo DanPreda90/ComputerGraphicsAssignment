@@ -7,6 +7,7 @@ const glm::vec3 wave500(0.0f, 255.0f, 146.0f);
 const glm::vec3 wave600(255.0f, 190.0f, 0.0f);
 const glm::vec3 wave700(205.0f, 0.0f, 0.0f);
 static glm::vec3 lightIntensity = 0.005f * (8.0f * wave500 + 15.6f * wave600 + 18.4f * wave700);
+static glm::mat4 m(1.0f);
 
 glm::mat4 getNodeTransform(const tinygltf::Node& node) {
 	glm::mat4 transform(1.0f);
@@ -83,15 +84,15 @@ int findKeyframeIndex(const std::vector<float>& times, float animationTime)
 std::vector<AnimationObject> prepareAnimation(Plane & plane)
 {
 	std::vector<AnimationObject> animationObjects;
-	for (const auto& anim : plane.model.animations) {
+	for (const auto& anim : plane.model->animations) {
 		AnimationObject animationObject;
 
 		for (const auto& sampler : anim.samplers) {
 			SamplerObject samplerObject;
 
-			const tinygltf::Accessor& inputAccessor = plane.model.accessors[sampler.input];
-			const tinygltf::BufferView& inputBufferView = plane.model.bufferViews[inputAccessor.bufferView];
-			const tinygltf::Buffer& inputBuffer = plane.model.buffers[inputBufferView.buffer];
+			const tinygltf::Accessor& inputAccessor = plane.model->accessors[sampler.input];
+			const tinygltf::BufferView& inputBufferView = plane.model->bufferViews[inputAccessor.bufferView];
+			const tinygltf::Buffer& inputBuffer = plane.model->buffers[inputBufferView.buffer];
 
 			assert(inputAccessor.componentType == TINYGLTF_COMPONENT_TYPE_FLOAT);
 			assert(inputAccessor.type == TINYGLTF_TYPE_SCALAR);
@@ -108,9 +109,9 @@ std::vector<AnimationObject> prepareAnimation(Plane & plane)
 				samplerObject.input[i] = *reinterpret_cast<const float*>(inputPtr + i * stride);
 			}
 
-			const tinygltf::Accessor& outputAccessor = plane.model.accessors[sampler.output];
-			const tinygltf::BufferView& outputBufferView = plane.model.bufferViews[outputAccessor.bufferView];
-			const tinygltf::Buffer& outputBuffer = plane.model.buffers[outputBufferView.buffer];
+			const tinygltf::Accessor& outputAccessor = plane.model->accessors[sampler.output];
+			const tinygltf::BufferView& outputBufferView = plane.model->bufferViews[outputAccessor.bufferView];
+			const tinygltf::Buffer& outputBuffer = plane.model->buffers[outputBufferView.buffer];
 
 			assert(outputAccessor.componentType == TINYGLTF_COMPONENT_TYPE_FLOAT);
 
@@ -242,14 +243,20 @@ void update(Plane & p,float time)
 {
 	//return;
 	
-	if (p.model.animations.size() > 0) {
-		const tinygltf::Animation& animation = p.model.animations[0];
+	if (p.model->animations.size() > 0) {
+		const tinygltf::Animation& animation = p.model->animations[0];
 		const AnimationObject& animationObject = p.animationObjects[0];
 		
-		std::vector<glm::mat4> nodeTransforms(p.model.nodes.size());
-		updateAnimation(p.model, animation, animationObject, time, nodeTransforms);
+		std::vector<glm::mat4> nodeTransforms(p.model->nodes.size());
+		std::vector<glm::mat4> animationTransforms(p.model->nodes.size());
+		computeLocalNodeTransform(*p.model, 0, nodeTransforms);
+		updateAnimation(*p.model, animation, animationObject, time, animationTransforms);
+		for (int i = 0; i < nodeTransforms.size(); ++i) {
+			nodeTransforms[i] = nodeTransforms[i] * animationTransforms[i];
+		}
+		
 		for (const tinygltf::AnimationChannel& channel : animation.channels) {
-			computeGlobalNodeTransform(p.model, nodeTransforms, channel.target_node, glm::mat4(1.0f), p.meshMatrices);
+			computeGlobalNodeTransform(*p.model, nodeTransforms, channel.target_node, glm::mat4(1.0f), p.meshMatrices);
 		}
 	}
 	
@@ -258,6 +265,13 @@ void update(Plane & p,float time)
 void bindPlaneMesh(std::vector<PrimitiveObject>& primitiveObjects,
 	tinygltf::Model& model, const char* texture_file_path, tinygltf::Mesh& mesh) {
 	std::map<int, GLuint> vbos;
+	int mesh_index = -1;
+	for (int j = 0; j < model.meshes.size(); ++j) {
+		if (model.meshes[j] == mesh) {
+			mesh_index = j;
+			break;
+		}
+	}
 	for (size_t i = 0; i < model.bufferViews.size(); ++i) {
 		const tinygltf::BufferView& bufferView = model.bufferViews[i];
 		int target = bufferView.target;
@@ -280,9 +294,9 @@ void bindPlaneMesh(std::vector<PrimitiveObject>& primitiveObjects,
 	}
 	// Each mesh can contain several primitives (or parts), each we need to 
 	// bind to an OpenGL vertex array object
+
 	for (size_t i = 0; i < mesh.primitives.size(); ++i) {
 		tinygltf::Primitive primitive = mesh.primitives[i];
-		tinygltf::Accessor indexAccessor = model.accessors[primitive.indices];
 		tinygltf::Material material = model.materials[primitive.material];
 		GLuint texture = 0;
 		int textureIndex = material.pbrMetallicRoughness.baseColorTexture.index;
@@ -328,12 +342,14 @@ void bindPlaneMesh(std::vector<PrimitiveObject>& primitiveObjects,
 				std::cout << "vaa missing: " << attrib.first << std::endl;
 			}
 		}
-
+		tinygltf::Accessor indexAccessor = model.accessors[mesh.primitives[0].indices];
 		// Record VAO for later use
 		PrimitiveObject primitiveObject;
 		primitiveObject.vao = vao;
 		primitiveObject.texture = texture;
 		primitiveObject.vbos = vbos;
+		primitiveObject.num_indices = indexAccessor.count;
+		primitiveObject.mesh_index = mesh_index;
 		primitiveObjects.push_back(primitiveObject);
 
 		glBindVertexArray(0);
@@ -344,40 +360,38 @@ void bindPlaneMesh(std::vector<PrimitiveObject>& primitiveObjects,
 void bindModelNodes(Plane& m,
 	tinygltf::Node& node) {
 	// Bind buffers for the current mesh at the node
-	if ((node.mesh >= 0) && (node.mesh < m.model.meshes.size())) {
+	if ((node.mesh >= 0) && (node.mesh < m.model->meshes.size())) {
 		std::vector<PrimitiveObject> primitives;
-		bindPlaneMesh(primitives, m.model, m.texture_file_path, m.model.meshes[node.mesh]);
+		bindPlaneMesh(primitives, *m.model, m.texture_file_path, m.model->meshes[node.mesh]);
 		m.primitiveObjects.push_back(primitives);
 	}
 
 	// Recursive into children nodes
 	for (size_t i = 0; i < node.children.size(); i++) {
-		assert((node.children[i] >= 0) && (node.children[i] < m.model.nodes.size()));
-		bindModelNodes(m, m.model.nodes[node.children[i]]);
+		assert((node.children[i] >= 0) && (node.children[i] < m.model->nodes.size()));
+		bindModelNodes(m, m.model->nodes[node.children[i]]);
 	}
 }
 
 void bindModel(Plane& m) {
-	tinygltf::Scene& scene = m.model.scenes[m.model.defaultScene];
+	tinygltf::Scene& scene = m.model->scenes[m.model->defaultScene];
 	for (int i = 0; i < scene.nodes.size(); ++i) {
-		bindModelNodes(m, m.model.nodes[scene.nodes[i]]);
+		bindModelNodes(m, m.model->nodes[scene.nodes[i]]);
 	}
 }
 
-void initalizePlane(Plane& plane) {
+void initalizePlane(Plane& plane,tinygltf::Model * model) {
 	plane.shader = LoadShadersFromString(plane.vertexShader, plane.fragmentShader);
-
+	plane.model = model;
 	if (!plane.shader) { std::cerr << "Failed to load shaders." << std::endl; }
-	if (!loadModel(plane.model, plane.gtlf_file_path)) {
-		std::cerr << "Failed to load model." << std::endl;
-	}
-	tinygltf::Scene scene = plane.model.scenes[0];
-	getSceneTransform(plane.model, plane.model_transform, plane.model.nodes[scene.nodes[0]]);
+	tinygltf::Scene scene = plane.model->scenes[0];
 	bindModel(plane);
+	getSceneTransform(*plane.model, plane.model_transform, plane.model->nodes[plane.model->defaultScene]);
 	plane.animationObjects = prepareAnimation(plane);
-	for (int i = 0; i < plane.model.meshes.size(); ++i) {
+	for (int i = 0; i < plane.model->meshes.size(); ++i) {
 		plane.meshMatrices.push_back(glm::mat4(1.0f));
 	}
+
 	plane.lightIntensityID = glGetUniformLocation(plane.shader, "lightIntensity");
 	plane.mvpMatrixID = glGetUniformLocation(plane.shader, "MVP");
 	plane.textureSampler = glGetUniformLocation(plane.shader, "textureSampler");
@@ -396,20 +410,14 @@ void drawPlaneMesh(const std::vector<PrimitiveObject>& primitiveObjects,
 			glUniform1f(textureSampler, 0);
 			glBindTexture(GL_TEXTURE_2D, texture);
 		}
-		int mesh_index = -1;
-		for (int j = 0; j < model.meshes.size();++j) {
-			if (model.meshes[j] == mesh) {
-				mesh_index = j;
-				break;
-			}
-		}
-		assert(mesh_index != -1);
-		glm::mat4 mvp = vp * plane.meshMatrices[mesh_index] * plane.model_transform;
+		
+		glm::mat4 t = glm::rotate(glm::mat4(1.0f), glm::radians(plane.rotation), glm::vec3(0, 1, 0));
+		glm::mat4 mvp = vp * m * t * plane.meshMatrices[primitiveObjects[i].mesh_index];
 		glUniformMatrix4fv(plane.mvpMatrixID, 1, GL_FALSE, &mvp[0][0]);
 		tinygltf::Primitive primitive = mesh.primitives[i];
 		tinygltf::Accessor indexAccessor = model.accessors[primitive.indices];
 		tinygltf::BufferView bv = model.bufferViews[indexAccessor.bufferView];
-		glBindBuffer(bv.target, vbos[indexAccessor.bufferView]);
+		//glBindBuffer(bv.target, vbos[indexAccessor.bufferView]);
 		glDrawElements(primitive.mode, indexAccessor.count,
 			indexAccessor.componentType,
 			BUFFER_OFFSET(indexAccessor.byteOffset));
@@ -419,30 +427,42 @@ void drawPlaneMesh(const std::vector<PrimitiveObject>& primitiveObjects,
 
 void drawModelNodes(Plane& m, tinygltf::Node& node,glm::mat4 & vp) {
 	// Draw the mesh at the node, and recursively do so for children nodes
-	if ((node.mesh >= 0) && (node.mesh < m.model.meshes.size())) {
-		drawPlaneMesh(m.primitiveObjects[node.mesh], m.model, m.textureSampler, m.model.meshes[node.mesh],m,vp);
+	if ((node.mesh >= 0) && (node.mesh < m.model->meshes.size())) {
+		drawPlaneMesh(m.primitiveObjects[node.mesh], *m.model, m.textureSampler, m.model->meshes[node.mesh],m,vp);
 		return;
 	}
 	for (size_t i = 0; i < node.children.size(); i++) {
-		drawModelNodes(m, m.model.nodes[node.children[i]],vp);
+		drawModelNodes(m, m.model->nodes[node.children[i]],vp);
 	}
 }
 void drawModel(Plane& m,glm::mat4 & vp) {
 	// Draw all nodes
-	const tinygltf::Scene& scene = m.model.scenes[m.model.defaultScene];
+	const tinygltf::Scene& scene = m.model->scenes[m.model->defaultScene];
 	for (size_t i = 0; i < scene.nodes.size(); ++i) {
-		drawModelNodes(m, m.model.nodes[scene.nodes[i]],vp);
+		drawModelNodes(m, m.model->nodes[scene.nodes[i]],vp);
 	}
 }
 
 void renderPlane(Plane& plane, glm::mat4 vp) {
 	glUseProgram(plane.shader);
-	glm::mat4 modelMatrix = plane.model_transform;
-	modelMatrix = glm::scale(modelMatrix, plane.scale);
-	modelMatrix = glm::translate(modelMatrix, plane.position);
-
 	// Scale the box along each axis to make it look like a building
-
-	//glUniform3fv(plane.lightIntensityID, 1, &lightIntensity[0]);
+	m = glm::translate(glm::mat4(1.0f), plane.position);
+	m = glm::scale(m, plane.scale);
+	glUniform3fv(plane.lightIntensityID, 1, &lightIntensity[0]);
 	drawModel(plane,vp);
+}
+
+void renderPlaneShadow(Plane& plane, Light& light) {
+	glUseProgram(light.programID);
+	glBindFramebuffer(GL_FRAMEBUFFER,light.frameBufferID);
+	glClear(GL_DEPTH_BUFFER_BIT);
+	for (std::vector<PrimitiveObject>& obj : plane.primitiveObjects) {
+		m = glm::translate(glm::mat4(1.0f), plane.position);
+		m = glm::scale(m, plane.scale);
+		glm::mat4 t = glm::rotate(glm::mat4(1.0f), glm::radians(plane.rotation), glm::vec3(0, 1, 0));
+		glm::mat4 model = m * t * plane.meshMatrices[obj[0].mesh_index];
+		//renderToShadowMap(light, obj[0].vao, model, obj[0].num_indices);
+	}
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 }

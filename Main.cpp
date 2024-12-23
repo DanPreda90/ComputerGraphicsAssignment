@@ -11,17 +11,25 @@
 #include "iostream"
 #include "City.h"
 #include "Plane.h"
+#include "Camera.h"
 
 static GLFWwindow* window;
 static void key_callback(GLFWwindow* window, int key, int scancode, int action, int mode);
+static void mouse_callback(GLFWwindow* window, double xpos, double ypos);
+static void click_callback(GLFWwindow* window, int button, int action, int mods);
 
-static glm::vec3 eye_center;
-static glm::vec3 lookat;
-static glm::vec3 up(0, 1, 0);
+static tinygltf::Model PlaneModel;
 
-static float viewAzimuth = 0.f;
-static float viewPolar = 0.f;
-static float viewDistance = 300.0f;
+static bool firstMouse = true;
+static float lastY = 540;
+static float lastX = 960;
+
+const glm::vec3 wave500(0.0f, 255.0f, 146.0f);
+const glm::vec3 wave600(255.0f, 190.0f, 0.0f);
+const glm::vec3 wave700(205.0f, 0.0f, 0.0f);
+static glm::vec3 lightIntensity = 0.005f * (8.0f * wave500 + 15.6f * wave600 + 18.4f * wave700);
+
+static Camera camera;
 
 int main() {
     /* Initialize the library */
@@ -45,38 +53,58 @@ int main() {
     gladLoadGL(glfwGetProcAddress);
 
 	glfwSetInputMode(window, GLFW_STICKY_KEYS, GL_TRUE);
+	glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+	
 	glfwSetKeyCallback(window, key_callback);
+	glfwSetMouseButtonCallback(window, click_callback);
+	glfwSetCursorPosCallback(window, mouse_callback);
 
 	glEnable(GL_DEPTH_TEST);
+	
+	initializeCamera(camera, glm::vec3(13.0711, 1310.4, -610.366), -66.0f, -270.0f, 0.0f);
 
-	eye_center.y = viewDistance * cos(viewPolar);
-	eye_center.x = viewDistance * cos(viewAzimuth);
-	eye_center.z = viewDistance * sin(viewAzimuth);
+	Light light;
+	light.intensity = lightIntensity;
+	light.position = glm::vec3(132.146, 263.148, 430.912);
+	light.front = glm::vec3(-0.551941, -0.633385, -0.542388);
+	initializeFrameBuffer(light);
 
 	Model m;
 	m.gtlf_file_path = "../assets/gold_mine/scene.gltf";
-	m.texture_file_path = "../assets/gold_mine/textures/TerrainNodeMaterial_baseColor.jpeg";
+	m.texture_file_path = "../assets/gold_mine/";
     initializeModel(m);
 
 	SkyBox sky;
 	sky.scale = glm::vec3(2000, 2000, 2000);
-	sky.position = &eye_center;
+	sky.position = &camera.position;
 	sky.texture_file_path = "../assets/textures/sky.png";
 	initialize(sky);
 
 	City city;
-	city.position = glm::vec3(-30, 2, 0);
+	city.position = glm::vec3(-50, 2, 10);
 	city.spacing = 5.0f;
-	city.scale = glm::vec3(5, 10, 5);
-	initializeCity(city, 10);
+	city.scale = glm::vec3(5, 20, 5);
+	city.texture_file_path = "../assets/textures/bricks.jpg";
+	initializeCity(city, 4);
 
-	Plane p;
-	p.position = glm::vec3(0, 0, 0);
-	p.scale = glm::vec3(1,1,1);
-	p.gtlf_file_path = "C:\\Users\\Dan\\Desktop\\Graphics Project\\assets\\chernovan_nemesis\\scene.gltf";
-	p.texture_file_path = "../assets/chernovan_nemesis/";
-	initalizePlane(p);
+	loadModel(PlaneModel, "C:\\Users\\Dan\\Desktop\\Graphics Project\\assets\\chernovan_nemesis\\scene.gltf");
+	Plane planes[5];
+	float plane_angles[] = {
+		0.0f,
+		0.05f,
+		0.1f,
+		0.05f,
+		0.0f
+	};
 
+	for (int i = 0; i < ArrayCount(planes); ++i) {
+		planes[i].position = glm::vec3(0, 200, 0);
+		planes[i].scale = glm::vec3(0.05, 0.05, 0.05);
+		planes[i].rotation = plane_angles[i];
+		planes[i].texture_file_path = "../assets/chernovan_nemesis/";
+		initalizePlane(planes[i], &PlaneModel);
+	}
+	
     glm::mat4 viewMatrix, projectionMatrix;
     glm::float32 FoV = 45;
     glm::float32 zNear = 100.0f;
@@ -87,6 +115,10 @@ int main() {
 	float fTime = 0.0f;			// Time for measuring fps
     /* Loop until the user closes the window */
 	static float playbackSpeed = 2.0f;
+	static float angle = 0.0f;
+
+	
+
     while (!glfwWindowShouldClose(window))
     {
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -97,20 +129,36 @@ int main() {
 
 		if (true) {
 			time += deltaTime * playbackSpeed;
-			update(p,time);
+			for (int i = 0; i < ArrayCount(planes); ++i) {
+				update(planes[i], time);
+			}
 		}
 
-		viewMatrix = glm::lookAt(eye_center, lookat, up);
+		viewMatrix = glm::lookAt(camera.position, camera.position + camera.front, camera.up);
 		glm::mat4 vp = projectionMatrix * viewMatrix;
-
-		
-		
-
+	
         /* Render here */
-		renderModel(m,vp);
+		glm::mat4 shadowMVP = projectionMatrix * glm::lookAt(light.position, light.position + light.front, glm::vec3(0, 1, 0));
+		renderModel(m,vp,light);
 		render(sky, vp);
-		renderCity(city,vp);
-		renderPlane(p, vp);
+		renderCity(city,vp,shadowMVP,light);
+
+		//saveDepthTexture(light.frameBufferID, "test.png");
+
+		int radius = 500;
+		
+		for (int i = 0; i < ArrayCount(planes); ++i) {
+			renderPlane(planes[i], vp);
+			float x = radius * cos(plane_angles[i]);
+			float z = radius * sin(plane_angles[i]);
+			planes[i].position.x = x;
+			planes[i].position.z = z;
+			planes[i].rotation -= 0.05;
+			radius += 50;
+			plane_angles[i] += 0.0008;
+		}
+
+		
         /* Swap front and back buffers */
         glfwSwapBuffers(window);
 
@@ -124,74 +172,65 @@ int main() {
 
 void key_callback(GLFWwindow* window, int key, int scancode, int action, int mode)
 {
-	if (key == GLFW_KEY_R && action == GLFW_PRESS)
-	{
-		viewAzimuth = 0.f;
-		viewPolar = 0.f;
-		eye_center.y = viewDistance * cos(viewPolar);
-		eye_center.x = viewDistance * cos(viewAzimuth);
-		eye_center.z = viewDistance * sin(viewAzimuth);
-		std::cout << "Reset." << std::endl;
-	}
-
-	if (key == GLFW_KEY_UP && (action == GLFW_REPEAT || action == GLFW_PRESS))
-	{
-		viewPolar -= 0.1f;
-		eye_center.y = viewDistance * cos(viewPolar);
-		eye_center.x = viewDistance * cos(viewAzimuth);
-		eye_center.z = viewDistance * sin(viewAzimuth);
-	}
-
-	if (key == GLFW_KEY_DOWN && (action == GLFW_REPEAT || action == GLFW_PRESS))
-	{
-		viewPolar += 0.1f;
-		eye_center.y = viewDistance * cos(viewPolar);
-		eye_center.x = viewDistance * cos(viewAzimuth);
-		eye_center.z = viewDistance * sin(viewAzimuth);
-	}
-
+	const float cameraSpeed = 10.0f;
 	if (key == GLFW_KEY_W) {
-		eye_center.z += 10.0f;
-		lookat.z += 10.0f;
-
+		camera.position += cameraSpeed * camera.front;
 	}
 	if (key == GLFW_KEY_S) {
-		eye_center.z -= 10.0f;
-		lookat.z -= 10.0f;
+		camera.position -= cameraSpeed * camera.front;
 	}
 	if (key == GLFW_KEY_A) {
-		eye_center.x -= 10.0f;
-		lookat.x -= 10.0f;
+		camera.position -= glm::normalize(glm::cross(camera.front, camera.up)) * cameraSpeed;
 	}
 	if (key == GLFW_KEY_D) {
-		eye_center.x += 10.0f;
-		lookat.x += 10.0f;
+		camera.position += glm::normalize(glm::cross(camera.front, camera.up)) * cameraSpeed;
 	}
-	if (key == GLFW_KEY_Q) {
-		eye_center.y += 10.0f;
-		lookat.y += 10.0f;
+	if (key == GLFW_KEY_Q){
+		camera.position += cameraSpeed * camera.up;
 	}
 	if (key == GLFW_KEY_E) {
-		eye_center.y -= 10.0f;
-		lookat.y -= 10.0f;
+		camera.position -= cameraSpeed * camera.up;
 	}
-
-	if (key == GLFW_KEY_LEFT && (action == GLFW_REPEAT || action == GLFW_PRESS))
-	{
-		viewAzimuth -= 0.1f;
-		eye_center.x = viewDistance * cos(viewAzimuth);
-		eye_center.z = viewDistance * sin(viewAzimuth);
-	}
-
-	if (key == GLFW_KEY_RIGHT && (action == GLFW_REPEAT || action == GLFW_PRESS))
-	{
-		viewAzimuth += 0.1f;
-		eye_center.x = viewDistance * cos(viewAzimuth);
-		eye_center.z = viewDistance * sin(viewAzimuth);
-	}
-
 	if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS)
 		glfwSetWindowShouldClose(window, GL_TRUE);
-
+	
 	//std::cout << eye_center.x << ',' << eye_center.y << ',' << eye_center.z << '\n';
+}
+void mouse_callback(GLFWwindow* window, double xpos, double ypos)
+{
+	if (firstMouse)
+	{
+		lastX = xpos;
+		lastY = ypos;
+		firstMouse = false;
+	}
+
+	float xoffset = xpos - lastX;
+	float yoffset = lastY - ypos;
+	lastX = xpos;
+	lastY = ypos;
+
+	float sensitivity = 0.1f;
+	xoffset *= sensitivity;
+	yoffset *= sensitivity;
+
+	float& yaw = camera.yaw;
+	float& pitch = camera.pitch;
+	float& roll = camera.roll;
+
+	yaw += xoffset;
+	pitch += yoffset;
+
+	if (pitch > 89.0f)
+		pitch = 89.0f;
+	if (pitch < -89.0f)
+		pitch = -89.0f;
+	updateCamera(camera);
+}
+
+void click_callback(GLFWwindow* window, int button, int action, int mods) {
+	if (button == GLFW_MOUSE_BUTTON_1) {
+		std::cout << camera.position.x << ',' << camera.position.y << ',' << camera.position.z << '\n';
+		std::cout << camera.front.x << ',' << camera.front.y << ',' << camera.front.z << '\n';
+	}
 }
