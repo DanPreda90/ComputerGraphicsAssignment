@@ -7,8 +7,8 @@
 
 const glm::vec3 wave500(0.0f, 255.0f, 146.0f);
 const glm::vec3 wave600(255.0f, 190.0f, 0.0f);
-const glm::vec3 wave700(205.0f, 0.0f, 0.0f);
-static glm::vec3 lightIntensity = 0.005f * (8.0f * wave500 + 15.6f * wave600 + 18.4f * wave700);
+const glm::vec3 wave700(0.0f, 0.0f, 205.0f);
+static glm::vec3 lightIntensity = 8000.0f * (8.0f * wave500 + 15.6f * wave600 + 18.4f * wave700);
 
 void bindModelNodes(Model& m,
 	tinygltf::Node& node) {
@@ -48,6 +48,7 @@ void initializeModel(Model& model) {
 	model.textureSampler = glGetUniformLocation(model.shader, "textureSampler");
 	model.depthMapSamplerID = glGetUniformLocation(model.shader, "depthSampler");
 	model.lightMVPID = glGetUniformLocation(model.shader, "lightMVP");
+	model.lightPositionID = glGetUniformLocation(model.shader, "lightPosition");
 }
 
 void drawModelNodes(Model& m,tinygltf::Node& node) {
@@ -72,15 +73,21 @@ void renderModel(Model & model,glm::mat4 vp,Light & light) {
 	glUseProgram(model.shader);
 	glm::mat4 m = glm::scale(glm::mat4(1.0f), glm::vec3(0.5, 0.5, 0.5));
 	glm::mat4 mvp = vp * m;
-	glm::mat4 lightPerspective = glm::perspective(glm::radians(45.0f), (float)16 / 9, 100.0f, 5000.0f);
-	glm::mat4 lightCamera = glm::lookAt(light.position, light.position + light.front, glm::vec3(0, 1, 0));
-	glm::mat4 lightMVP = lightPerspective * lightCamera * m;
+	glm::mat4 lightMVP = getLightMVP(light,m);
 	glActiveTexture(GL_TEXTURE1);
 	glBindTexture(GL_TEXTURE_2D, light.depthTextureID);
 	glUniform1f(model.depthMapSamplerID, 0);
 	glUniform3fv(model.lightIntensityID,1,&lightIntensity[0]);
+	glUniform3fv(model.lightPositionID,1,&light.position[0]);
 	glUniformMatrix4fv(model.lightMVPID, 1, GL_FALSE,&lightMVP[0][0]);
 	glUniformMatrix4fv(model.mvpMatrixID, 1, GL_FALSE, &mvp[0][0]);
 	drawModel(model);
+}
+
+void renderModelShadow(Model& model,Light & light) {
+	PrimitiveObject& obj = model.primitiveObjects[0][0];
+	glm::mat4 m(1.0f);
+	m = glm::scale(m, glm::vec3(0.5, 0.5, 0.5));
+	renderToShadowMap(light, obj.vao, m, obj.num_indices);
 }
 

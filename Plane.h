@@ -35,11 +35,13 @@ struct Plane {
 	out vec2 uv;
 	out vec3 normal;
 	out vec3 tangent;
+	out vec3 worldPosition;
 
 	void main() {
 		gl_Position =  MVP * vec4(POSITION, 1.0f);
 		uv = TEXCOORD_0;
 		normal = NORMAL;
+		worldPosition = POSITION;
 		//tangent = TANGENT;
 	}
 	)";
@@ -50,11 +52,13 @@ struct Plane {
 	in vec2 uv;
 	in vec3 normal;
 	in vec4 color;
+	in vec3 worldPosition;
 
 	out vec4 finalColor;
 	uniform sampler2D textureSampler;
 	uniform sampler2D depthSampler;
 	uniform vec3 lightIntensity;
+	uniform vec3 lightPosition;
 
 	float shadowCalculation(vec4 shadowPos)
 	{
@@ -63,13 +67,15 @@ struct Plane {
 			float lightDepth = texture(depthSampler,projection.xy).r;
 			float cameraDepth = shadowPos.z;
 
-			return (cameraDepth >= lightDepth + 1e-4) ? 0.8 : 1.0;
+			return (cameraDepth > lightDepth) ? 0.2 : 1.0;
 	}
 
 	void main()
 	{
-		vec3 lightDirection = normalize(vec3(0,1,0));
-		vec3 reflection = (0.78 / PI) * max(dot(normal,lightDirection),0) * lightIntensity;
+		float r = distance(lightPosition,worldPosition);
+		float irradiance = 4 * PI * r * r;
+		vec3 lightDirection = normalize(lightPosition - worldPosition);
+		vec3 reflection = (0.78 / PI) * max(dot(normal,lightDirection),0) * (lightIntensity / vec3(irradiance,irradiance,irradiance));
 		vec4 tex = texture(textureSampler,uv) * (0.15 * 0.85);
 		vec4 rgb = vec4(reflection.xyz,0) * tex;
 		vec4 tonemapped = rgb / (1 + rgb);
@@ -87,6 +93,8 @@ struct Plane {
 	GLuint minValID;
 	GLuint maxValID;
 	GLuint lightIntensityID;
+	GLuint depthMapSamplerID;
+	GLuint lightPositionID;
 
 	std::vector<std::vector<PrimitiveObject>> primitiveObjects;
 	std::vector<AnimationObject> animationObjects;
@@ -99,5 +107,5 @@ struct Plane {
 
 void initalizePlane(Plane& plane,tinygltf::Model * model);
 void update(Plane& plane, float time);
-void renderPlane(Plane& plane, glm::mat4 vp);
+void renderPlane(Plane& plane, glm::mat4 vp,Light & light);
 void renderPlaneShadow(Plane& plane, Light& light);

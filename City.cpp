@@ -6,8 +6,8 @@
 
 const glm::vec3 wave500(0.0f, 255.0f, 146.0f);
 const glm::vec3 wave600(255.0f, 190.0f, 0.0f);
-const glm::vec3 wave700(205.0f, 0.0f, 0.0f);
-static glm::vec3 lightIntensity = 0.005f * (8.0f * wave500 + 15.6f * wave600 + 18.4f * wave700);
+const glm::vec3 wave700(0.0f, 0.0f, 205.0f);;
+static glm::vec3 lightIntensity = 8000.0f * (8.0f * wave500 + 15.6f * wave600 + 18.4f * wave700);
 
 void bindBuilding(Building & b) {
 	// Define scale of the building geometry
@@ -73,6 +73,7 @@ void initializeCity(City & city,int num_buildings) {
 	city.lightIntensityID = glGetUniformLocation(city.programID, "lightIntensity");
 	city.shadowMVPID = glGetUniformLocation(city.programID, "shadowMVP");
 	city.shadowMapSamplerID = glGetUniformLocation(city.programID, "shadowMap");
+	city.lightPositionID = glGetUniformLocation(city.programID, "lightPosition");
 	glm::vec3 position = glm::vec3(city.position);
 	std::vector<glm::vec3> positions = generateBuildingPositions(city.position, city.spacing, num_buildings);
 	for (int i = 0; i < positions.size(); ++i) {
@@ -98,6 +99,7 @@ void renderCity(City& city, glm::mat4 vp,glm::mat4 shadowMVP,Light & light) {
 		glm::mat4 shadow = shadowMVP * modelMatrix;
 		glActiveTexture(GL_TEXTURE0);
 		glUniform3fv(city.lightIntensityID, 1, &lightIntensity[0]);
+		glUniform3fv(city.lightPositionID, 1, &light.position[0]);
 		glUniform1f(city.textureSamplerID, 0);
 		glBindTexture(GL_TEXTURE_2D, city.textureID);
 		glActiveTexture(GL_TEXTURE1);
@@ -118,14 +120,9 @@ void renderCity(City& city, glm::mat4 vp,glm::mat4 shadowMVP,Light & light) {
 }
 
 void renderCityToShadow(City& city, Light& light) {
-	glUseProgram(light.programID);
-	glBindFramebuffer(GL_FRAMEBUFFER, light.frameBufferID);
-	glClear(GL_DEPTH_BUFFER_BIT);
 	for (Building & b : city.buildings) {
 		glm::mat4 m = glm::scale(glm::mat4(1.0f), b.scale);
 		m = glm::translate(m, b.position);
-		//renderToShadowMap(light, b.VAO, m, 36);
+		renderToShadowMap(light, b.VAO, m, 36);
 	}
-	glBindFramebuffer(GL_FRAMEBUFFER, 0);
-	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 }

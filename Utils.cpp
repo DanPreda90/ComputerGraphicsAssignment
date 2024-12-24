@@ -405,6 +405,7 @@ void drawMesh(const std::vector<PrimitiveObject>& primitiveObjects,
 		tinygltf::Primitive primitive = mesh.primitives[i];
 		tinygltf::Accessor indexAccessor = model.accessors[primitive.indices];
 		tinygltf::BufferView bv = model.bufferViews[indexAccessor.bufferView];
+		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, vbos.at(indexAccessor.bufferView));
 		glDrawElements(primitive.mode, indexAccessor.count,
 			indexAccessor.componentType,
 			BUFFER_OFFSET(indexAccessor.byteOffset));
@@ -427,4 +428,25 @@ void saveDepthTexture(GLuint fbo, std::string filename) {
 	for (int i = 0; i < width * height; ++i) img[3 * i] = img[3 * i + 1] = img[3 * i + 2] = depth[i] * 255;
 
 	stbi_write_png(filename.c_str(), width, height, channels, img.data(), width * channels);
+}
+
+void renderToShadowMap(Light& l, GLuint& vao, glm::mat4 depthMatrix, int indices) {
+	glBindVertexArray(vao);
+	glm::mat4 lightProjection = glm::perspective(45.0f, 16.0f / 9.0f, 100.0f, 5000.0f);
+	glm::mat4 lightVP = lightProjection * glm::lookAt(l.position, l.position + l.front, glm::vec3(0, 1, 0));
+	glm::mat4 lightMVP = lightVP * depthMatrix;
+	glUniformMatrix4fv(l.depthMatrixID, 1, GL_FALSE, &lightMVP[0][0]);
+	glDrawElements(
+		GL_TRIANGLES,
+		indices,
+		GL_UNSIGNED_INT,
+		(void*)0
+	);
+	glBindVertexArray(0);
+}
+
+glm::mat4 getLightMVP(Light& light,glm::mat4 m) {
+	glm::mat4 lightPerspective = glm::perspective(glm::radians(45.0f), (float)16 / 9, 100.0f, 5000.0f);
+	glm::mat4 lightCamera = glm::lookAt(light.position, light.position + light.front, glm::vec3(0, 1, 0));
+	return lightPerspective * lightCamera * m;
 }

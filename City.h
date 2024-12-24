@@ -206,11 +206,13 @@ struct City {
 	in vec2 uv;
 	in vec3 normal;
 	in vec4 color;
+	in vec3 worldPosition;
 
 	out vec4 finalColor;
 	uniform sampler2D textureSampler;
 	uniform sampler2D depthSampler;
 	uniform vec3 lightIntensity;
+	uniform vec3 lightPosition;
 
 	float shadowCalculation(vec4 shadowPos)
 	{
@@ -219,13 +221,15 @@ struct City {
 			float lightDepth = texture(depthSampler,projection.xy).r;
 			float cameraDepth = shadowPos.z;
 
-			return (cameraDepth >= lightDepth + 1e-4) ? 0.8 : 1.0;
+			return (cameraDepth > lightDepth) ? 0.2 : 1.0;
 	}
 
 	void main()
 	{
-		vec3 lightDirection = normalize(vec3(0,1,0));
-		vec3 reflection = (0.78 / PI) * max(dot(normal,lightDirection),0) * lightIntensity;
+		float r = distance(worldPosition,lightPosition);
+		float irradiance = 4 * PI * r * r;
+		vec3 lightDirection = normalize(lightPosition - worldPosition);
+		vec3 reflection = (0.78 / PI) * max(dot(normal,lightDirection),0) * (lightIntensity / vec3(irradiance,irradiance,irradiance));
 		vec4 tex = texture(textureSampler,uv) * (0.15 * 0.85);
 		vec4 rgb = vec4(reflection.xyz,0) * tex;
 		vec4 tonemapped = rgb / (1 + rgb);
@@ -233,7 +237,6 @@ struct City {
 		finalColor = pow(tonemapped,vec4(1.0/2.2));
 	}
 	)";
-
 };
 
 void initializeCity(City& city,int num_buildings);

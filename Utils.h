@@ -27,6 +27,7 @@ struct Light {
 	GLuint depthMatrixID;
 	GLuint depthTextureID;
 	GLuint depthTextureSamplerID;
+	GLuint lightPositionID;
 
 	const char* depth_vertex_shader = R"(
 		#version 330 core
@@ -69,3 +70,4 @@ void CalculateSurfaceNormals(GLfloat* out, size_t length, GLfloat* vertices);
 void renderToShadowMap(Light& l, GLuint & vao, glm::mat4 depthMatrix, int indices);
 void initializeFrameBuffer(Light& l);
 void saveDepthTexture(GLuint fbo, std::string filename);
+glm::mat4 getLightMVP(Light& light, glm::mat4 m);

@@ -26,10 +26,23 @@ static float lastX = 960;
 
 const glm::vec3 wave500(0.0f, 255.0f, 146.0f);
 const glm::vec3 wave600(255.0f, 190.0f, 0.0f);
-const glm::vec3 wave700(205.0f, 0.0f, 0.0f);
-static glm::vec3 lightIntensity = 0.005f * (8.0f * wave500 + 15.6f * wave600 + 18.4f * wave700);
+const glm::vec3 wave700(0.0f, 0.0f, 205.0f);
+static glm::vec3 lightIntensity = 8000.0f * (8.0f * wave500 + 15.6f * wave600 + 18.4f * wave700);
 
 static Camera camera;
+
+static void renderShadows(Light & light, City & city, Model & m, Plane * planes) {
+	glUseProgram(light.programID);
+	glBindFramebuffer(GL_FRAMEBUFFER, light.frameBufferID);
+	glClear(GL_DEPTH_BUFFER_BIT);
+	renderModelShadow(m, light);
+	renderCityToShadow(city, light);
+	for (int i = 0; i < 5; ++i) {
+		renderPlaneShadow(planes[i], light);
+	}
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+}
 
 int main() {
     /* Initialize the library */
@@ -65,8 +78,8 @@ int main() {
 
 	Light light;
 	light.intensity = lightIntensity;
-	light.position = glm::vec3(132.146, 263.148, 430.912);
-	light.front = glm::vec3(-0.551941, -0.633385, -0.542388);
+	light.position = glm::vec3(-7.18986, 989.017, 424.757);
+	light.front = glm::vec3(-0.00130974, -0.92653, -0.376218);
 	initializeFrameBuffer(light);
 
 	Model m;
@@ -138,6 +151,9 @@ int main() {
 		glm::mat4 vp = projectionMatrix * viewMatrix;
 	
         /* Render here */
+		renderShadows(light, city, m,planes);
+
+		
 		glm::mat4 shadowMVP = projectionMatrix * glm::lookAt(light.position, light.position + light.front, glm::vec3(0, 1, 0));
 		renderModel(m,vp,light);
 		render(sky, vp);
@@ -148,7 +164,7 @@ int main() {
 		int radius = 500;
 		
 		for (int i = 0; i < ArrayCount(planes); ++i) {
-			renderPlane(planes[i], vp);
+			renderPlane(planes[i], vp,light);
 			float x = radius * cos(plane_angles[i]);
 			float z = radius * sin(plane_angles[i]);
 			planes[i].position.x = x;

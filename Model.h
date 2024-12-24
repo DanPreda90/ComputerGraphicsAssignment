@@ -16,13 +16,16 @@ struct Model {
 	out vec2 uv;
 	out vec3 normal;
 	out vec4 color;
-
+	out vec4 shadowPos;
+	out vec3 worldPosition;
 
 	void main() {
 		gl_Position =  MVP * vec4(POSITION, 1.0f);
+		shadowPos = lightMVP * vec4(POSITION,1.0f);
 		uv = TEXCOORD_0;
 		normal = NORMAL;
 		color = COLOR_0;
+		worldPosition = POSITION;
 	}
 	)";
 
@@ -32,31 +35,36 @@ struct Model {
 	in vec2 uv;
 	in vec3 normal;
 	in vec4 color;
+	in vec3 worldPosition;
+	in vec4 shadowPos;
 
 	out vec4 finalColor;
 	uniform sampler2D textureSampler;
 	uniform sampler2D depthSampler;
 	uniform vec3 lightIntensity;
+	uniform vec3 lightPosition;
 
 	float shadowCalculation(vec4 shadowPos)
 	{
 			vec3 projection = shadowPos.xyz / shadowPos.w;
 			projection = projection * 0.5 + 0.5;
 			float lightDepth = texture(depthSampler,projection.xy).r;
-			float cameraDepth = shadowPos.z;
+			float cameraDepth = projection.z;
 
-			return (cameraDepth >= lightDepth + 1e-4) ? 0.8 : 1.0;
+			return (cameraDepth > lightDepth + 1.0e-2) ? 1.0 : 0.2;
 	}
 
 	void main()
 	{
-		vec3 lightDirection = normalize(vec3(0,1,0));
-		vec3 reflection = (0.78 / PI) * max(dot(normal,lightDirection),0) * lightIntensity;
+		float r = distance(lightPosition,worldPosition);
+		float irradiance = 4 * PI * r * r;
+		vec3 lightDirection = normalize(lightPosition - worldPosition);
+		vec3 reflection = (0.78 / PI) * max(dot(normal,lightDirection),0) * (lightIntensity / vec3(irradiance,irradiance,irradiance));
 		vec4 tex = texture(textureSampler,uv) * (0.15 * 0.85);
 		vec4 rgb = vec4(reflection.xyz,0) * tex;
 		vec4 tonemapped = rgb / (1 + rgb);
 		vec3 ambient = 0.15 * lightIntensity;
-		finalColor = pow(tonemapped,vec4(1.0/2.2));
+		finalColor = shadowCalculation(shadowPos) * pow(tonemapped,vec4(1.0/2.2));
 	}
 	)";
 
@@ -70,6 +78,7 @@ struct Model {
 	GLuint maxValID;
 	GLuint lightIntensityID;
 	GLuint depthMapSamplerID;
+	GLuint lightPositionID;
 	GLuint lightMVPID;
 	
 	std::vector<std::vector<PrimitiveObject>> primitiveObjects;
@@ -80,3 +89,4 @@ struct Model {
 
 void initializeModel(Model & model);
 void renderModel(Model& model,glm::mat4 vp, Light& light);
+void renderModelShadow(Model& model, Light& light);
