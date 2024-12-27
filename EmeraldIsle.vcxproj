@@ -131,14 +131,23 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="..\Dependencies\glad\src\gl.c" />
-    <ClCompile Include="Environment.cpp" />
+    <ClCompile Include="Camera.cpp" />
+    <ClCompile Include="Model.cpp" />
     <ClCompile Include="Main.cpp" />
+    <ClCompile Include="City.cpp" />
+    <ClCompile Include="Plane.cpp" />
+    <ClCompile Include="Quad.cpp" />
     <ClCompile Include="SkyBox.cpp" />
     <ClCompile Include="Utils.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="Environment.h" />
+    <ClInclude Include="Camera.h" />
+    <ClInclude Include="Model.h" />
+    <ClInclude Include="City.h" />
+    <ClInclude Include="Plane.h" />
+    <ClInclude Include="Quad.h" />
     <ClInclude Include="SkyBox.h" />
+    <ClInclude Include="SolarPanel.h" />
     <ClInclude Include="Utils.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
