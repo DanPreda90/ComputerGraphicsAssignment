@@ -51,7 +51,7 @@ struct Model {
 			float lightDepth = texture(depthSampler,projection.xy).r;
 			float cameraDepth = projection.z;
 
-			return (cameraDepth > lightDepth + 1.0e-2) ? 1.0 : 0.2;
+			return (cameraDepth > lightDepth + 1.0e-4) ? 1.0 : 0.2;
 	}
 
 	void main()

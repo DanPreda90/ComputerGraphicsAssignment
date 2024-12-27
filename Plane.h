@@ -79,8 +79,8 @@ struct Plane {
 		vec4 tex = texture(textureSampler,uv) * (0.15 * 0.85);
 		vec4 rgb = vec4(reflection.xyz,0) * tex;
 		vec4 tonemapped = rgb / (1 + rgb);
-		vec3 ambient = 0.15 * lightIntensity;
-		finalColor = pow(tonemapped,vec4(1.0/2.2));
+		vec4 ambient = tex;
+		finalColor = ambient + pow(tonemapped,vec4(1.0/2.2));
 	}
 	)";
 

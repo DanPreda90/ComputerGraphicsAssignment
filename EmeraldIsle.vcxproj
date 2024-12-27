@@ -136,6 +136,7 @@
     <ClCompile Include="Main.cpp" />
     <ClCompile Include="City.cpp" />
     <ClCompile Include="Plane.cpp" />
+    <ClCompile Include="Quad.cpp" />
     <ClCompile Include="SkyBox.cpp" />
     <ClCompile Include="Utils.cpp" />
   </ItemGroup>
@@ -144,6 +145,7 @@
     <ClInclude Include="Model.h" />
     <ClInclude Include="City.h" />
     <ClInclude Include="Plane.h" />
+    <ClInclude Include="Quad.h" />
     <ClInclude Include="SkyBox.h" />
     <ClInclude Include="SolarPanel.h" />
     <ClInclude Include="Utils.h" />

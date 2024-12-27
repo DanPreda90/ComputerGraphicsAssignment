@@ -12,6 +12,7 @@
 #include "City.h"
 #include "Plane.h"
 #include "Camera.h"
+#include "Quad.h"
 
 static GLFWwindow* window;
 static void key_callback(GLFWwindow* window, int key, int scancode, int action, int mode);
@@ -26,17 +27,19 @@ static float lastX = 960;
 
 const glm::vec3 wave500(0.0f, 255.0f, 146.0f);
 const glm::vec3 wave600(255.0f, 190.0f, 0.0f);
-const glm::vec3 wave700(0.0f, 0.0f, 205.0f);
+const glm::vec3 wave700(0.0f, 0.0f, 255.0f);
 static glm::vec3 lightIntensity = 8000.0f * (8.0f * wave500 + 15.6f * wave600 + 18.4f * wave700);
 
 static Camera camera;
+static Quad quad;
 
-static void renderShadows(Light & light, City & city, Model & m, Plane * planes) {
+static void renderShadows(Light & light, City & city, City& city2,Model & m, Plane * planes) {
 	glUseProgram(light.programID);
 	glBindFramebuffer(GL_FRAMEBUFFER, light.frameBufferID);
 	glClear(GL_DEPTH_BUFFER_BIT);
 	renderModelShadow(m, light);
 	renderCityToShadow(city, light);
+	renderCityToShadow(city2, light);
 	for (int i = 0; i < 5; ++i) {
 		renderPlaneShadow(planes[i], light);
 	}
@@ -78,8 +81,8 @@ int main() {
 
 	Light light;
 	light.intensity = lightIntensity;
-	light.position = glm::vec3(-7.18986, 989.017, 424.757);
-	light.front = glm::vec3(-0.00130974, -0.92653, -0.376218);
+	light.position = glm::vec3(6.65604, 1187.92, 414.355);
+	light.front = glm::vec3(0.000446966, -0.966376, -0.257133);
 	initializeFrameBuffer(light);
 
 	Model m;
@@ -93,6 +96,10 @@ int main() {
 	sky.texture_file_path = "../assets/textures/sky.png";
 	initialize(sky);
 
+	quad.position = glm::vec3(0,1,0);
+	quad.scale = glm::vec3(5000, 5000, 5000);
+	initQuad(quad);
+
 	City city;
 	city.position = glm::vec3(-50, 2, 10);
 	city.spacing = 5.0f;
@@ -100,7 +107,15 @@ int main() {
 	city.texture_file_path = "../assets/textures/bricks.jpg";
 	initializeCity(city, 4);
 
-	loadModel(PlaneModel, "C:\\Users\\Dan\\Desktop\\Graphics Project\\assets\\chernovan_nemesis\\scene.gltf");
+	City city2;
+	city2.position = glm::vec3(40, 5, 20);
+	city2.spacing = 5.0f;
+	city2.scale = glm::vec3(5, 20, 5);
+	city2.texture_file_path = "../assets/textures/bricks.jpg";
+	initializeCity(city2, 4);
+
+
+	loadModel(PlaneModel, "../assets/chernovan_nemesis/scene.gltf");
 	Plane planes[5];
 	float plane_angles[] = {
 		0.0f,
@@ -130,7 +145,7 @@ int main() {
 	static float playbackSpeed = 2.0f;
 	static float angle = 0.0f;
 
-	
+	unsigned long frames = 0;
 
     while (!glfwWindowShouldClose(window))
     {
@@ -140,26 +155,25 @@ int main() {
 		float deltaTime = float(currentTime - lastTime);
 		lastTime = currentTime;
 
-		if (true) {
-			time += deltaTime * playbackSpeed;
-			for (int i = 0; i < ArrayCount(planes); ++i) {
-				update(planes[i], time);
-			}
+		
+		time += deltaTime * playbackSpeed;
+		for (int i = 0; i < ArrayCount(planes); ++i) {
+			update(planes[i], time);
 		}
+		
 
 		viewMatrix = glm::lookAt(camera.position, camera.position + camera.front, camera.up);
 		glm::mat4 vp = projectionMatrix * viewMatrix;
 	
         /* Render here */
-		renderShadows(light, city, m,planes);
+		renderShadows(light, city, city2,m,planes);
 
-		
 		glm::mat4 shadowMVP = projectionMatrix * glm::lookAt(light.position, light.position + light.front, glm::vec3(0, 1, 0));
 		renderModel(m,vp,light);
 		render(sky, vp);
 		renderCity(city,vp,shadowMVP,light);
-
-		//saveDepthTexture(light.frameBufferID, "test.png");
+		renderCity(city2,vp,shadowMVP,light);
+		renderQuad(quad, vp);
 
 		int radius = 500;
 		
@@ -169,11 +183,22 @@ int main() {
 			float z = radius * sin(plane_angles[i]);
 			planes[i].position.x = x;
 			planes[i].position.z = z;
-			planes[i].rotation -= 0.05;
+			planes[i].rotation -= 0.05025;
 			radius += 50;
 			plane_angles[i] += 0.0008;
 		}
 
+		frames++;
+		fTime += deltaTime;
+		if (fTime > 2.0f) {
+			float fps = frames / fTime;
+			frames = 0;
+			fTime = 0;
+
+			char out[200];
+			sprintf_s(out,"FPS : %.2f", fps);
+			glfwSetWindowTitle(window, out);
+		}
 		
         /* Swap front and back buffers */
         glfwSwapBuffers(window);
@@ -209,7 +234,7 @@ void key_callback(GLFWwindow* window, int key, int scancode, int action, int mod
 	}
 	if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS)
 		glfwSetWindowShouldClose(window, GL_TRUE);
-	
+
 	//std::cout << eye_center.x << ',' << eye_center.y << ',' << eye_center.z << '\n';
 }
 void mouse_callback(GLFWwindow* window, double xpos, double ypos)
